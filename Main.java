@@ -2,18 +2,23 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
 public class Main {
     private static Map<String, String> userDatabase = new HashMap<>();
+    private static final String USER_FILE = "user_data.txt";
     private static Map<String, Map<String, Integer>> warehouseStock = new HashMap<>();
     private static StockManage stockManage = new StockManage();
     private static JPanel warehousePanel;
 
     public static void main(String[] args) {
+        loadUserData();  // โหลดบัญชีจากไฟล์
         userDatabase.put("user", "user123");       
         userDatabase.put("manager", "manager123"); 
 
@@ -29,6 +34,7 @@ public class Main {
         JLabel passLabel = new JLabel("Password:");
         JPasswordField passField = new JPasswordField();
         JButton loginButton = new JButton("Login");
+        JButton registerButton = new JButton("Register");
 
         loginButton.addActionListener(e -> {
             String username = userField.getText();
@@ -42,16 +48,56 @@ public class Main {
                 JOptionPane.showMessageDialog(frame, "Invalid Username or Password");
             }
         });
+        
+        registerButton.addActionListener(e -> {
+            JFrame registerFrame = new JFrame("Register");
+            registerFrame.setSize(300, 200);
+            registerFrame.setLayout(new GridLayout(3, 2));
 
-        frame.add(userLabel);
-        frame.add(userField);
-        frame.add(passLabel);
-        frame.add(passField);
-        frame.add(new JLabel());
-        frame.add(loginButton);
+            JLabel newUserLabel = new JLabel("New Username:");
+            JTextField newUserField = new JTextField();
+            JLabel newPassLabel = new JLabel("New Password:");
+            JPasswordField newPassField = new JPasswordField();
+            JButton confirmRegister = new JButton("Register");
 
-        frame.setVisible(true);
-    }
+            confirmRegister.addActionListener(ev -> {
+                String newUsername = newUserField.getText();
+                String newPassword = new String(newPassField.getPassword());
+            
+                if (newUsername.isEmpty() || newPassword.isEmpty()) {
+                    JOptionPane.showMessageDialog(registerFrame, "Username and password cannot be empty.");
+                    return;
+                }
+            
+                if (userDatabase.containsKey(newUsername)) {
+                    JOptionPane.showMessageDialog(registerFrame, "Username already exists.");
+                } else {
+                    userDatabase.put(newUsername, newPassword);
+                    saveUserData();  // บันทึกข้อมูลลงไฟล์
+                    JOptionPane.showMessageDialog(registerFrame, "Registration successful!");
+                    registerFrame.dispose();
+                }
+            });
+
+            registerFrame.add(newUserLabel);
+            registerFrame.add(newUserField);
+            registerFrame.add(newPassLabel);
+            registerFrame.add(newPassField);
+            registerFrame.add(new JLabel());
+            registerFrame.add(confirmRegister);
+
+            registerFrame.setVisible(true);
+            });
+
+            frame.add(userLabel);
+            frame.add(userField);
+            frame.add(passLabel);
+            frame.add(passField);
+            frame.add(registerButton);  // เพิ่มปุ่ม Register
+            frame.add(loginButton);  // ปุ่ม Login
+
+            frame.setVisible(true);
+        }
 
     private static void openStockManagement(String username) {
         JFrame stockFrame = new JFrame("Stock Management System");
@@ -70,8 +116,8 @@ public class Main {
         controlPanel.setLayout(new FlowLayout());
     
         if (username.equals("manager")) {  
-            JButton addWarehouseButton = new JButton("Add Warehouse");
-            JButton removeWarehouseButton = new JButton("Remove Warehouse");
+            JButton addWarehouseButton = new JButton("✏️ Add Warehouse");
+            JButton removeWarehouseButton = new JButton("❌ Remove Warehouse");
     
             addWarehouseButton.addActionListener(e -> {
                 String newWarehouse = JOptionPane.showInputDialog(stockFrame, "Enter new warehouse name:");
@@ -101,7 +147,7 @@ public class Main {
             controlPanel.add(removeWarehouseButton);
     
             // เพิ่มปุ่ม "View Log" เฉพาะ Manager
-            JButton viewLogButton = new JButton("View Log");
+            JButton viewLogButton = new JButton("👁️ View Log");
             viewLogButton.addActionListener(e -> viewLog(username));
             controlPanel.add(viewLogButton);
         }
@@ -123,7 +169,7 @@ public class Main {
         warehousePanel.removeAll();
 
         for (String warehouse : warehouseStock.keySet()) {
-            JButton warehouseButton = new JButton("View " + warehouse);
+            JButton warehouseButton = new JButton("View: " + warehouse);
             warehouseButton.addActionListener(e -> openWarehouseView(warehouse, username));
             warehousePanel.add(warehouseButton);
         }
@@ -133,22 +179,50 @@ public class Main {
     }
 
     private static void openWarehouseView(String warehouse, String username) {
-        JFrame warehouseFrame = new JFrame(warehouse + " Inventory");
-        warehouseFrame.setSize(400, 350);
+        JFrame warehouseFrame = new JFrame(warehouse + "📦 Inventory");
+        warehouseFrame.setSize(380, 350);
         warehouseFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         warehouseFrame.setLayout(new FlowLayout());
 
+        // 📌 ส่วนของ Search Bar
+        JPanel searchPanel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        JTextField searchField = new JTextField(15);
+        JButton searchButton = new JButton("Search");
+
+        gbc.gridx = 0; gbc.gridy = 0; searchPanel.add(new JLabel("Search: "), gbc);
+        gbc.gridx = 1; gbc.gridy = 0; searchPanel.add(searchField, gbc);
+        gbc.gridx = 2; gbc.gridy = 0; searchPanel.add(searchButton, gbc);
+
         JTextArea logArea = new JTextArea(10, 30);
         logArea.setEditable(false);
-        updateLogArea(logArea, warehouse);
+        updateLogArea(logArea, warehouse, "");
         warehouseFrame.add(new JScrollPane(logArea));
 
-        if (username.equals("manager")) {  
+        // แสดงสินค้าทั้งหมดตั้งแต่เริ่มต้น
+        updateLogArea(logArea, warehouse, "");
+
+        searchButton.addActionListener(e -> {
+            String query = searchField.getText().trim();
+            updateLogArea(logArea, warehouse, query);
+        });
+
+        
+        warehouseFrame.add(new JLabel("Search Product: "));
+        warehouseFrame.add(searchField);
+        warehouseFrame.add(searchButton);
+        
+
+        JPanel buttonPanel = new JPanel(new FlowLayout());
+        if (username.equals("manager")) {
             JTextField productField = new JTextField(10);
             JTextField quantityField = new JTextField(5);
-            JButton addButton = new JButton("Add Product");
-            JButton removeButton = new JButton("Remove Product");
-            JButton editButton = new JButton("Edit Product");
+            JButton addButton = new JButton("➕ Add");
+            JButton removeButton = new JButton("❌ Remove");
+            JButton editButton = new JButton("✏️ Edit");
 
             addButton.addActionListener(e -> {
                 String product = productField.getText();
@@ -159,7 +233,7 @@ public class Main {
                 try {
                     int quantity = Integer.parseInt(quantityField.getText());
                     stockManage.addProduct(warehouse, product, quantity);
-                    updateLogArea(logArea, warehouse);
+                    updateLogArea(logArea, warehouse, product);
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(warehouseFrame, "Invalid number format.");
                 }
@@ -168,7 +242,7 @@ public class Main {
             removeButton.addActionListener(e -> {
                 String product = productField.getText();
                 stockManage.removeProduct(warehouse, product);
-                updateLogArea(logArea, warehouse);
+                updateLogArea(logArea, warehouse, product);
             });
 
             editButton.addActionListener(e -> {
@@ -178,7 +252,7 @@ public class Main {
                     try {
                         int newQuantity = Integer.parseInt(newQuantityStr);
                         stockManage.setProductQuantity(warehouse, product, newQuantity);
-                        updateLogArea(logArea, warehouse);
+                        updateLogArea(logArea, warehouse, newQuantityStr);
                     } catch (NumberFormatException ex) {
                         JOptionPane.showMessageDialog(warehouseFrame, "Invalid quantity input.");
                     }
@@ -199,10 +273,12 @@ public class Main {
         warehouseFrame.setVisible(true);
     }
 
-    private static void updateLogArea(JTextArea logArea, String warehouse) {
-        StringBuilder logText = new StringBuilder(warehouse + " Inventory:\n");
+    private static void updateLogArea(JTextArea logArea, String warehouse, String query) {
+        StringBuilder logText = new StringBuilder("📦 " + warehouse + " Inventory:\n");
         for (Map.Entry<String, Integer> entry : stockManage.viewStock(warehouse).entrySet()) {
-            logText.append(entry.getKey()).append(" : ").append(entry.getValue()).append(" units\n");
+            if (query.isEmpty() || entry.getKey().toLowerCase().contains(query.toLowerCase())) {
+                logText.append("🔹 ").append(entry.getKey()).append(" : ").append(entry.getValue()).append(" units\n");
+            }
         }
         logArea.setText(logText.toString());
     }
@@ -234,7 +310,34 @@ public class Main {
         logFrame.add(new JScrollPane(logArea));
         logFrame.setVisible(true);
     }
-    
-    
+
+        private static void loadUserData() {
+            File file = new File(USER_FILE);
+            if (!file.exists()) return;
+        
+            try (BufferedReader reader = new BufferedReader(new FileReader(USER_FILE))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] parts = line.split(",");
+                    if (parts.length == 2) {
+                        userDatabase.put(parts[0], parts[1]);
+                    }
+                }
+            } catch (IOException e) {
+                System.out.println("Error loading user data: " + e.getMessage());
+            }
+        }
+      
+        private static void saveUserData() {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(USER_FILE))) {
+            for (Map.Entry<String, String> entry : userDatabase.entrySet()) {
+                writer.write(entry.getKey() + "," + entry.getValue());
+                writer.newLine();
+            }
+        } catch (IOException e) {
+            System.out.println("Error saving user data: " + e.getMessage());
+        }
+    }
+
     
 }
